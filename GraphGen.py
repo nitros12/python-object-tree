@@ -29,7 +29,7 @@ class PythonClass:
             return isinstance(obj, FunctionType) and not obj.__name__.startswith("_")
 
         return cls(obj.__name__,
-                   [cls.from_object(i) for i in obj.mro()[1:]],
+                   map(lambda cls: cls.__qualname__, obj.mro()[1:]),  # get names of classes XXX: name or qualname?
                    cls.build_body(obj.__main__),
                    [PythonMethod.from_object(x) for x, _ in inspect.getmembers(obj, predicate)])
 
@@ -96,3 +96,4 @@ def build_for_module(name: str):
 
     for name, obj in inspect.getmembers(module):
         if inspect.isclass(obj):
+            # TODO: what was supposed to go here again?
