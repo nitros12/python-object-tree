@@ -7,21 +7,23 @@ from typing import Dict, List, Optional, Tuple, Type, Union
 
 
 class PythonClass:
-    def __init__(self, name: str, parents: List[Union['PythonClass', str]],
-                 attrs: List['PythonAttr'], methods: List['PythonMethod']):
+    def __init__(self, obj: object, name: str, parents: List[Union['PythonClass', str]], methods: List['PythonMethod']):
+        self.obj = obj
         self.name = name
         self.parents = parents
-        self.attrs = attrs
+        self.attrs = self.build_body(self.obj.__init__)
         self.methods = methods
 
-    @staticmethod
-    def build_body(obj) -> List['PythonAttr']:
-        module = inspect.getmodule(obj)
-        lines, _ = inspect.getsourcelines(obj)
+    def build_body(self, obj) -> List['PythonAttr']:
+        print(obj)
+        try:
+            lines, _ = inspect.getsourcelines(obj)
+        except TypeError:
+            return ()
         indent = len(lines[0]) - len(lines[0].lstrip())
         lines = [line[indent:] for line in lines]
         fn_body = ast.parse("".join(lines)).body[0].body  # the function body we just parsed
-        return list(chain.from_iterable(PythonAttr.from_ast(i, module) for i in fn_body if PythonAttr.valid_ast(i)))
+        return list(chain.from_iterable(PythonAttr.from_ast(i, self.obj, obj) for i in fn_body if PythonAttr.valid_ast(i)))
 
     @classmethod
     def from_object(cls, obj: type):
@@ -29,10 +31,9 @@ class PythonClass:
         def predicate(obj):
             return isinstance(obj, FunctionType) and not obj.__name__.startswith("_")
 
-        return cls(obj.__name__,
+        return cls(obj, obj.__name__,
                    [c.__qualname__ for c in obj.mro()[1:]],  # get names of classes XXX: name or qualname?
-                   cls.build_body(obj.__init__),
-                   [PythonMethod.from_object(x) for x, _ in inspect.getmembers(obj, predicate)])
+                   [PythonMethod.from_object(x) for _, x in inspect.getmembers(obj, predicate)])
 
 
 class PythonMethod:
@@ -66,9 +67,9 @@ class PythonAttr:
     @classmethod
     def attr_access_path(cls, obj: ast.AST) -> Tuple[str]:
         if isinstance(obj, ast.Name):
-            return (obj.id)
+            return (obj.id,)
         if isinstance(obj, ast.Attribute):
-            return cls.attr_access_path(obj.value)
+            return cls.attr_access_path(obj.value) + (obj.attr,)
 
     @classmethod
     def find_attr(cls, path: Tuple[str], module: object, base: object) -> Optional[type]:
@@ -81,29 +82,28 @@ class PythonAttr:
         return obj
 
     @classmethod
-    def find_type(cls, typ: ast.AST, obj: type):
+    def find_type(cls, typ: ast.AST, klass, fn):
         """Find the type of an ast object as a typing object. Returns None if cannot be found."""
         if isinstance(typ, ast.Num):
             return type(typ.n)
         if isinstance(typ, ast.Str):
             return str
         if isinstance(typ, ast.Tuple):
-            return Tuple[(cls.find_type(i, obj) for i in typ.elts)]
+            return Tuple[tuple(cls.find_type(i, klass, fn) for i in typ.elts)]
         if isinstance(typ, ast.List):
-            return List[(cls.find_type(i, obj) for i in typ.elts)]
+            return List[tuple(cls.find_type(i, klass, fn) for i in typ.elts)]
         if isinstance(typ, ast.Call):
-            obj = cls.find_attr(inspect.getmodule(obj), obj)
-            try:
-                name = typ.func.id
-                print(f"module = {inspect.getmodule(obj)}, name = {name}")
-                val = getattr(obj, name)
-                return val.__annotations__.get("return")
-            except AttributeError:
-                print("m")
-                return None
+            obj = cls.find_attr(cls.attr_access_path(typ.func),
+                                inspect.getmodule(klass), klass)
+            return obj.__annotations__.get("return")
+        if isinstance(typ, ast.Name):  # look at function params first
+            obj = fn.__annotations__.get(typ.id)
+            if obj is None:
+                obj = cls.find_attr((typ.id,), inspect.getmodule(klass), klass)
+            return obj
 
     @classmethod
-    def from_ast(cls, syntax: Union[_valid_types], module, klass) -> 'PythonAttr':
+    def from_ast(cls, syntax: Union[_valid_types], klass, fn) -> 'PythonAttr':
         def check_self_attr(obj):
             return isinstance(obj, ast.Attribute) and isinstance(obj.ctx, ast.Store) and (obj.value.id == "self")
 
@@ -111,22 +111,14 @@ class PythonAttr:
             if isinstance(var, (ast.Tuple, ast.List)):
                 if isinstance(value, (ast.Tuple, ast.List)):  # tuple assign, easy
                     values = value.elts
-                elif isinstance(value, ast.Call):
-                    try:
-                        name = value.func.id
-                        val = getattr(module, name)
-                        values = val.__annotations__.get("return")
-                    except AttributeError:
-                        print("w")
-                        values = None
                 else:
-                    values = None
+                    values = cls.find_type(value.func, klass, fn)
                 if not isinstance(values, (Tuple, List)):
                     values = [None] * len(var.elts)
                 yield from chain.from_iterable(map(helper, var.elts, values))
                 return
             if check_self_attr(var):
-                yield cls(var.attr, cls.find_type(value, module))
+                yield cls(var.attr, cls.find_type(value, klass, fn))
 
         if isinstance(syntax, ast.Assign):
             yield from chain.from_iterable(helper(i, syntax.value) for i in syntax.targets)
