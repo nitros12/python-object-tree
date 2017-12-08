@@ -11,6 +11,8 @@ def generate(name: str):
     result = analysis.build_for_module(name)
     graph = Digraph(name)
 
+    graph.attr('edge', arrowhead="empty")
+
     for i in result:
         graph.node(i.name, i.info, shape="record")
         if isinstance(i, PythonClass):

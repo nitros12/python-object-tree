@@ -26,8 +26,8 @@ class PythonClass:
 
     @property
     def info(self):
-        attrs = escape_xml("\l".join(map(str, self.attrs)))
-        methods = escape_xml("\l".join(map(str, self.methods)))
+        attrs = escape_xml("\l".join(map(str, self.attrs)) + "\l")
+        methods = escape_xml("\l".join(map(str, self.methods)) + "\l")
         return "{" + f"{self.name} | {attrs} | {methods}" + "}"
 
     def build_body(self, obj) -> List['PythonAttr']:
@@ -65,7 +65,6 @@ class PythonMethod:
 
     def __str__(self):
         pargs = ", ".join(str(b) for _, b in self.args)
-        print(type(self.returns))
         if self.returns is inspect.Signature.empty or self.returns is None:
             return_ = ""
         else:
@@ -88,7 +87,7 @@ class PythonAttr:
         self.type = type
 
     def __str__(self):
-        return f"{self.name}:{self.type}"
+        return f"{self.name}:{self.type}" if self.type else self.name
 
     __repr__ = __str__
 
@@ -129,7 +128,7 @@ class PythonAttr:
         if isinstance(typ, ast.Call):
             obj = cls.find_attr(cls.attr_access_path(typ.func),
                                 inspect.getmodule(klass), klass)
-            return obj.__annotations__.get("return")
+            return getattr(obj, "__annotations__", {}).get("return")
         if isinstance(typ, ast.Name):  # look at function params first
             obj = fn.__annotations__.get(typ.id)
             if obj is None:
@@ -139,7 +138,8 @@ class PythonAttr:
     @classmethod
     def from_ast(cls, syntax: Union[_valid_types], klass, fn) -> 'PythonAttr':
         def check_self_attr(obj):
-            return isinstance(obj, ast.Attribute) and isinstance(obj.ctx, ast.Store) and (obj.value.id == "self")
+            return (isinstance(obj, ast.Attribute) and isinstance(obj.ctx, ast.Store)
+                    and isinstance(obj.value, ast.Name) and (obj.value.id == "self"))
 
         def helper(var, value):
             if isinstance(var, (ast.Tuple, ast.List)):
@@ -161,20 +161,44 @@ class PythonAttr:
                 yield cls(syntax.target.attr, syntax.annotation.id)
 
 
-def build_for_object(obj: type):
+def build_for_object(obj: type, tovisit: List[object]):
     if inspect.isclass(obj):
+        tovisit.extend(obj.__bases__)
         return PythonClass.from_object(obj)
     if inspect.isfunction(obj):
         return PythonMethod.from_object(obj)
 
 
+def getname(obj: object):
+    name = getattr(obj, "__qualname__", None)
+    if name:
+        return name
+
+    name = getattr(obj, "__name__", None)
+    if name:
+        return name
+
+    return obj.__class__.__name__
+
+
 def build_for_module(name: str):
     module = import_module(name)
 
-    def predicate(obj):
-        return hasattr(obj, "__module__") and obj.__module__ == name
+    visited = []
+    tovisit = []
 
-    for _, obj in inspect.getmembers(module, predicate):
-        r = build_for_object(obj)
+    def predicate(obj):
+        return hasattr(obj, "__module__") and obj.__module__.startswith(name)
+
+    tovisit.extend(obj for _, obj in inspect.getmembers(module, predicate))
+
+    while tovisit:
+        obj = tovisit.pop()
+
+        if getname(obj) in visited:
+            continue
+
+        r = build_for_object(obj, tovisit)
         if r is not None:
+            visited.append(r.name)
             yield r
