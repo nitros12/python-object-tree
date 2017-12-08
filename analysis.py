@@ -3,14 +3,16 @@ import inspect
 from importlib import import_module
 from itertools import chain
 from types import FunctionType
-from typing import Dict, List, Optional, Tuple, Type, Union
+from typing import List, Optional, Tuple, Type, Union
 
 
 def escape_xml(s: str):
     replacements = (("<", "&lt;"),
                     (">", "&gt;"),
                     ('"', r'\"'),
-                    ("'", r"\'"))
+                    ("'", r"\'"),
+                    ("[", r"\["),
+                    ("]", r"\]"))
     for a, b in replacements:
         s = s.replace(a, b)
     return s
@@ -26,8 +28,8 @@ class PythonClass:
 
     @property
     def info(self):
-        attrs = escape_xml("\l".join(map(str, self.attrs)) + "\l")
-        methods = escape_xml("\l".join(map(str, self.methods)) + "\l")
+        attrs = escape_xml(r"\l".join(map(str, self.attrs)) + r"\l")
+        methods = r"\l".join(map(str, self.methods)) + r"\l"
         return "{" + f"{self.name} | {attrs} | {methods}" + "}"
 
     def build_body(self, obj) -> List['PythonAttr']:
@@ -58,18 +60,14 @@ class PythonClass:
 
 
 class PythonMethod:
-    def __init__(self, name: str, args: List[Tuple[str, Type]], returns: Type):
+    def __init__(self, name: str, signature: inspect.Signature):
         self.name = name
-        self.args = args
-        self.returns = returns
+        self.args = list(signature.parameters.items())
+        self.returns = signature.return_annotation
+        self.signature = signature
 
     def __str__(self):
-        pargs = ", ".join(str(b) for _, b in self.args)
-        if self.returns is inspect.Signature.empty or self.returns is None:
-            return_ = ""
-        else:
-            return_ = f" -> {self.returns}"
-        return f"fn {self.name}({pargs}){return_}"
+        return escape_xml(f"fn {self.name}{self.signature}")
 
     @property
     def info(self):
@@ -78,16 +76,17 @@ class PythonMethod:
     @classmethod
     def from_object(cls, obj: type):
         signature = inspect.signature(obj)
-        return cls(obj.__name__, list(signature.parameters.items()), signature.return_annotation)
+        return cls(obj.__name__, signature)
 
 
 class PythonAttr:
     def __init__(self, name: str, type: Type):
         self.name = name
         self.type = type
+        self.type_show = inspect.formatannotation(type)
 
     def __str__(self):
-        return f"{self.name}:{self.type}" if self.type else self.name
+        return f"{self.name}:{self.type_show}" if self.type else self.name
 
     __repr__ = __str__
 

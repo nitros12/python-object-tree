@@ -4,10 +4,11 @@ from typing import Dict, Union
 from graphviz import Digraph
 
 import analysis
-from analysis import PythonClass, PythonMethod
+from analysis import PythonClass
 
 
 def generate(name: str):
+    """Generate uml graph for a module."""
     result = analysis.build_for_module(name)
     graph = Digraph(name)
 
