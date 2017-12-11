@@ -1,9 +1,10 @@
 import ast
 import inspect
+import typing
 from importlib import import_module
 from itertools import chain
 from types import FunctionType
-from typing import List, Optional, Tuple, Type, Union
+from typing import Callable, List, Optional, Tuple, Type, Union
 
 
 def escape_xml(s: str):
@@ -114,7 +115,7 @@ class PythonAttr:
         return obj
 
     @classmethod
-    def find_type(cls, typ: ast.AST, klass, fn):
+    def find_type(cls, typ: Union[ast.AST, type], klass, fn):
         """Find the type of an ast object as a typing object. Returns None if cannot be found."""
         if isinstance(typ, ast.Num):
             return type(typ.n)
@@ -132,7 +133,11 @@ class PythonAttr:
             obj = fn.__annotations__.get(typ.id)
             if obj is None:
                 obj = cls.find_attr((typ.id,), inspect.getmodule(klass), klass)
-            return obj
+            return cls.find_type(obj, klass, fn)
+        if isinstance(typ, FunctionType):
+            sig = inspect.signature(typ)
+            return Callable[[t.annotation for t in sig.parameters.values()], sig.return_annotation]
+        return typ
 
     @classmethod
     def from_ast(cls, syntax: Union[_valid_types], klass, fn) -> 'PythonAttr':
@@ -145,8 +150,10 @@ class PythonAttr:
                 if isinstance(value, (ast.Tuple, ast.List)):  # tuple assign, easy
                     values = value.elts
                 else:
-                    values = cls.find_type(value.func, klass, fn)
-                if not isinstance(values, (Tuple, List)):
+                    values = cls.find_type(value, klass, fn)
+                if isinstance(values, typing.GenericMeta):
+                    values = values._subs_tree()[1:]  # pylint: disable=protected-access
+                if not isinstance(values, (tuple, list)):
                     values = [None] * len(var.elts)
                 yield from chain.from_iterable(map(helper, var.elts, values))
                 return
@@ -157,7 +164,7 @@ class PythonAttr:
             yield from chain.from_iterable(helper(i, syntax.value) for i in syntax.targets)
         if isinstance(syntax, ast.AnnAssign):
             if check_self_attr(syntax.target):
-                yield cls(syntax.target.attr, syntax.annotation.id)
+                yield cls(syntax.target.attr, type(syntax.annotation.id))
 
 
 def build_for_object(obj: type, tovisit: List[object]):

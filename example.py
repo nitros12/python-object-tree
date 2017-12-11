@@ -1,14 +1,21 @@
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 
 def something(a: int, b: List[int]) -> str:
     return "blah"
 
 
+def aaa() -> Tuple[int, str]:
+    pass
+
+
 class A:
     def __init__(self, a: int):
         self.x = a
         self.c = "hello"
+        self.a = aaa
+        self.t = aaa()
+        self.ta, self.tb = aaa()
         self.n: int = somefunction_we_cant_see()
 
 
