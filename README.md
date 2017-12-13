@@ -26,6 +26,9 @@ class A:
 
 
 class B(A):
+    def __init__(self, nah: Tuple[Dict[str, int], str]):
+        self.test = {1: nah}
+
     def wot(self, a: int) -> int:
         pass
 

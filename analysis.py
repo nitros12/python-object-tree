@@ -4,7 +4,7 @@ import typing
 from importlib import import_module
 from itertools import chain
 from types import FunctionType
-from typing import Callable, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 
 def escape_xml(s: str):
@@ -124,7 +124,12 @@ class PythonAttr:
         if isinstance(typ, ast.Tuple):
             return Tuple[tuple(cls.find_type(i, klass, fn) for i in typ.elts)]
         if isinstance(typ, ast.List):
-            return List[tuple(cls.find_type(i, klass, fn) for i in typ.elts)]
+            types = tuple(cls.find_type(i, klass, fn) for i in typ.elts)
+            return List[Union[types] if types else Any]
+        if isinstance(typ, ast.Attribute):
+            obj = cls.find_attr(cls.attr_access_path(typ),
+                                inspect.getmodule(klass), klass)
+            return type(obj)
         if isinstance(typ, ast.Call):
             obj = cls.find_attr(cls.attr_access_path(typ.func),
                                 inspect.getmodule(klass), klass)
@@ -134,9 +139,23 @@ class PythonAttr:
             if obj is None:
                 obj = cls.find_attr((typ.id,), inspect.getmodule(klass), klass)
             return cls.find_type(obj, klass, fn)
+        if isinstance(typ, ast.IfExp):
+            return Union[cls.find_type(typ.body, klass, fn),
+                         cls.find_type(typ.orelse, klass, fn)]
+        if isinstance(typ, ast.NameConstant):
+            return type(typ.value) if typ.value is not None else None
+        if isinstance(typ, ast.Dict):
+            keys = tuple(cls.find_type(i, klass, fn) for i in typ.keys)
+            values = tuple(cls.find_type(i, klass, fn) for i in typ.values)
+            return Dict[Union[keys] if keys else Any,
+                        Union[values] if values else Any]
+        if isinstance(typ, ast.Set):
+            values = tuple(cls.find_type(i, klass, fn) for i in typ.elts)
         if isinstance(typ, FunctionType):
             sig = inspect.signature(typ)
             return Callable[[t.annotation for t in sig.parameters.values()], sig.return_annotation]
+        if isinstance(typ, ast.AST):
+            return None
         return typ
 
     @classmethod
@@ -151,9 +170,9 @@ class PythonAttr:
                     values = value.elts
                 else:
                     values = cls.find_type(value, klass, fn)
-                if isinstance(values, typing.GenericMeta):
-                    values = values._subs_tree()[1:]  # pylint: disable=protected-access
-                if not isinstance(values, (tuple, list)):
+                if isinstance(values, typing.TupleMeta):
+                    values = values.__args__  # pylint: disable=protected-access
+                elif not isinstance(values, (tuple, list)):
                     values = [None] * len(var.elts)
                 yield from chain.from_iterable(map(helper, var.elts, values))
                 return
