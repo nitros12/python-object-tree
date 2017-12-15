@@ -63,9 +63,15 @@ class PythonClass:
 class PythonMethod:
     def __init__(self, name: str, signature: inspect.Signature):
         self.name = name
-        self.args = list(signature.parameters.items())
-        self.returns = signature.return_annotation
-        self.signature = signature
+
+        returns = signature.return_annotation
+        returns = typing._eval_type(returns, globals(), globals())  # pylint: ignore=protected-access
+
+        args = list(signature.parameters.items())
+        resolved_args = (typing._eval_type(t.annotation, globals(), globals()) for _, t in args)
+
+        self.signature = inspect.Signature((t.replace(annotation=r)
+                                            for (n, t), r in zip(args, resolved_args)), return_annotation=returns)
 
     def __str__(self):
         return escape_xml(f"fn {self.name}{self.signature}")
@@ -133,9 +139,11 @@ class PythonAttr:
         if isinstance(typ, ast.Call):
             obj = cls.find_attr(cls.attr_access_path(typ.func),
                                 inspect.getmodule(klass), klass)
-            return getattr(obj, "__annotations__", {}).get("return")
+            if obj is None:
+                return None
+            return typing.get_type_hints(obj).get("return")
         if isinstance(typ, ast.Name):  # look at function params first
-            obj = fn.__annotations__.get(typ.id)
+            obj = typing.get_type_hints(fn).get(typ.id)
             if obj is None:
                 obj = cls.find_attr((typ.id,), inspect.getmodule(klass), klass)
             return cls.find_type(obj, klass, fn)
@@ -154,6 +162,8 @@ class PythonAttr:
         if isinstance(typ, FunctionType):
             sig = inspect.signature(typ)
             return Callable[[t.annotation for t in sig.parameters.values()], sig.return_annotation]
+        if isinstance(typ, typing._ForwardRef):
+            return typ.__forward_value__
         if isinstance(typ, ast.AST):
             return None
         return typ
