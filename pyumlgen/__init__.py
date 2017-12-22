@@ -2,13 +2,10 @@
 import argparse
 import os
 import sys
-from types import FunctionType
-from typing import Dict, Union
 
 from graphviz import Digraph
 
-import analysis
-from analysis import PythonClass
+from pyumlgen import analysis
 
 
 def generate(name: str) -> Digraph:
@@ -20,13 +17,12 @@ def generate(name: str) -> Digraph:
 
     for i in result:
         graph.node(i.name, i.info, shape="record")
-        if isinstance(i, PythonClass):
+        if isinstance(i, analysis.PythonClass):
             graph.edges((i.name, n) for n in i.parents)
     return graph
 
 
-if __name__ == "__main__":
-
+def main():
     parser = argparse.ArgumentParser(description="Generate uml for python module.")
     parser.add_argument("module", help="module path to use.")
     parser.add_argument("-o", "--out", nargs="?", type=argparse.FileType("w"), default=sys.stdout,
@@ -43,3 +39,6 @@ if __name__ == "__main__":
         fname, fmt = os.path.splitext(args.render)
         graph.format = fmt[1:]
         graph.render(fname, cleanup=True)
+
+if __name__ == "__main__":
+    main()

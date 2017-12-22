@@ -4,7 +4,7 @@ import typing
 from importlib import import_module
 from itertools import chain
 from types import FunctionType
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 
 def escape_xml(s: str):
@@ -65,7 +65,7 @@ class PythonMethod:
         self.name = name
 
         returns = signature.return_annotation
-        returns = typing._eval_type(returns, globals(), globals())  # pylint: ignore=protected-access
+        returns = typing._eval_type(returns, globals(), globals())  # pylint: disable=protected-access
 
         args = list(signature.parameters.items())
         resolved_args = (typing._eval_type(t.annotation, globals(), globals()) for _, t in args)
@@ -122,7 +122,8 @@ class PythonAttr:
 
     @classmethod
     def find_type(cls, typ: Union[ast.AST, type], klass, fn):
-        """Find the type of an ast object as a typing object. Returns None if cannot be found."""
+        """Find the type of an ast object as a typing object.
+        Returns None if cannot be found."""
         if isinstance(typ, ast.Num):
             return type(typ.n)
         if isinstance(typ, ast.Str):
