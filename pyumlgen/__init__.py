@@ -23,6 +23,9 @@ def generate(name: str) -> Digraph:
 
 
 def main():
+    print(os.getcwd())
+    sys.path.append(os.getcwd())
+    
     parser = argparse.ArgumentParser(description="Generate uml for python module.")
     parser.add_argument("module", help="module path to use.")
     parser.add_argument("-o", "--out", nargs="?", type=argparse.FileType("w"), default=sys.stdout,

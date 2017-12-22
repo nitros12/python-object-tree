@@ -1,14 +1,13 @@
-# python-object-tree
+# Python-object-tree
 A bad tool that generates UML diagrams for python.
 
-# example usage
+# Usage
 
 ```
 $ pyumlgen example.py
-
 ```
 
-# example
+# Example
 
 ```py
 from typing import Dict, List, Tuple

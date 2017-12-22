@@ -104,11 +104,13 @@ class PythonAttr:
         return isinstance(obj, cls._valid_types)
 
     @classmethod
-    def attr_access_path(cls, obj: ast.AST) -> Tuple[str]:
+    def attr_access_path(cls, obj: Union[ast.Name, ast.Attribute]) -> Tuple[str]:
         if isinstance(obj, ast.Name):
             return (obj.id,)
         if isinstance(obj, ast.Attribute):
-            return cls.attr_access_path(obj.value) + (obj.attr,)
+            path = cls.attr_access_path(obj.value)
+            if path is not None:
+                return path + (obj.attr,)
 
     @classmethod
     def find_attr(cls, path: Tuple[str], module: object, base: object) -> Optional[type]:
@@ -134,12 +136,16 @@ class PythonAttr:
             types = tuple(cls.find_type(i, klass, fn) for i in typ.elts)
             return List[Union[types] if types else Any]
         if isinstance(typ, ast.Attribute):
-            obj = cls.find_attr(cls.attr_access_path(typ),
-                                inspect.getmodule(klass), klass)
+            path = cls.attr_access_path(typ)
+            if path is None:  # if err == nil: return err
+                return None
+            obj = cls.find_attr(path, inspect.getmodule(klass), klass)
             return type(obj)
         if isinstance(typ, ast.Call):
-            obj = cls.find_attr(cls.attr_access_path(typ.func),
-                                inspect.getmodule(klass), klass)
+            path = cls.attr_access_path(typ.func)
+            if path is None:
+                return None
+            obj = cls.find_attr(path, inspect.getmodule(klass), klass)
             if obj is None:
                 return None
             return typing.get_type_hints(obj).get("return")
