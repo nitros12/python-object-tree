@@ -4,7 +4,7 @@ A bad tool that generates UML diagrams for python.
 # Usage
 
 ```
-$ pyumlgen example.py
+$ pyumlgen example
 ```
 
 # Example
