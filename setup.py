@@ -13,7 +13,7 @@ with open("requirements.txt") as f:
 
 setup(
     name="pyumlgen",
-    version="0.1.3",
+    version="0.1.5",
     description="Generate UML diagrams with type information from python modules",
     author="ben simms",
     packages=find_packages(),

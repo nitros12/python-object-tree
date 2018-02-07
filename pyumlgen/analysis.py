@@ -1,10 +1,12 @@
 import ast
 import inspect
 import typing
-from importlib import import_module
 from itertools import chain
 from types import FunctionType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+
+
+namespace = globals()
 
 
 def escape_xml(s: str):
@@ -20,7 +22,9 @@ def escape_xml(s: str):
 
 
 class PythonClass:
-    def __init__(self, obj: object, name: str, parents: List[Union['PythonClass', str]], methods: List['PythonMethod']):
+    def __init__(self, obj: object, name: str,
+                 parents: List[Union['PythonClass', str]],
+                 methods: List['PythonMethod']):
         self.obj = obj
         self.name = name
         self.parents = parents
@@ -41,7 +45,8 @@ class PythonClass:
         indent = len(lines[0]) - len(lines[0].lstrip())
         lines = [line[indent:] for line in lines]
         fn_body = ast.parse("".join(lines)).body[0].body  # the function body we just parsed
-        return list(chain.from_iterable(PythonAttr.from_ast(i, self.obj, obj) for i in fn_body if PythonAttr.valid_ast(i)))
+        return list(chain.from_iterable(PythonAttr.from_ast(i, self.obj, obj)
+                                        for i in fn_body if PythonAttr.valid_ast(i)))
 
     @classmethod
     def from_object(cls, obj: type):
@@ -57,18 +62,19 @@ class PythonClass:
 
         return cls(obj, obj.__name__,
                    [c.__qualname__ for c in obj.__bases__],  # get names of classes XXX: name or qualname?
-                   [PythonMethod.from_object(x) for _, x in inspect.getmembers(obj, predicate)])
+                   [PythonMethod(x) for _, x in inspect.getmembers(obj, predicate)]
+        )
 
 
 class PythonMethod:
-    def __init__(self, name: str, signature: inspect.Signature):
-        self.name = name
-
-        returns = signature.return_annotation
-        returns = typing._eval_type(returns, globals(), globals())  # pylint: disable=protected-access
+    def __init__(self, fun: object):
+        self.name = fun.__name__
+        types = typing.get_type_hints(fun, namespace)
+        returns = types.get("returns")
+        signature = inspect.signature(fun)
 
         args = list(signature.parameters.items())
-        resolved_args = (typing._eval_type(t.annotation, globals(), globals()) for _, t in args)
+        resolved_args = (types.get(t) for _, t in args)
 
         self.signature = inspect.Signature((t.replace(annotation=r)
                                             for (n, t), r in zip(args, resolved_args)), return_annotation=returns)
@@ -79,11 +85,6 @@ class PythonMethod:
     @property
     def info(self):
         return str(self)
-
-    @classmethod
-    def from_object(cls, obj: type):
-        signature = inspect.signature(obj)
-        return cls(obj.__name__, signature)
 
 
 class PythonAttr:
@@ -148,9 +149,9 @@ class PythonAttr:
             obj = cls.find_attr(path, inspect.getmodule(klass), klass)
             if obj is None:
                 return None
-            return typing.get_type_hints(obj).get("return")
+            return typing.get_type_hints(obj, namespace).get("return")
         if isinstance(typ, ast.Name):  # look at function params first
-            obj = typing.get_type_hints(fn).get(typ.id)
+            obj = typing.get_type_hints(fn, namespace).get(typ.id)
             if obj is None:
                 obj = cls.find_attr((typ.id,), inspect.getmodule(klass), klass)
             return cls.find_type(obj, klass, fn)
@@ -200,7 +201,11 @@ class PythonAttr:
             yield from chain.from_iterable(helper(i, syntax.value) for i in syntax.targets)
         if isinstance(syntax, ast.AnnAssign):
             if check_self_attr(syntax.target):
-                yield cls(syntax.target.attr, type(syntax.annotation.id))
+                ob = eval(compile(ast.Expression(syntax.annotation), "<hint>", "eval"),
+                          globals(),
+                          namespace
+                )  # pylint: disable=eval-used
+                yield cls(syntax.target.attr, ob)
 
 
 def build_for_object(obj: type, tovisit: List[object]):
@@ -208,7 +213,7 @@ def build_for_object(obj: type, tovisit: List[object]):
         tovisit.extend(obj.__bases__)
         return PythonClass.from_object(obj)
     if inspect.isfunction(obj):
-        return PythonMethod.from_object(obj)
+        return PythonMethod(obj)
 
 
 def getname(obj: object):
@@ -223,16 +228,21 @@ def getname(obj: object):
     return obj.__class__.__name__
 
 
-def build_for_module(name: str):
-    module = import_module(name)
+def build_for_module(mod, names: dict=None):
+    if names:
+        global namespace
+        namespace.update(names)
 
+    name = mod.__name__
     visited = []
     tovisit = []
 
-    def predicate(obj):
-        return hasattr(obj, "__module__") and obj.__module__.startswith(name)
+    module_name = name.split(".")[0]
 
-    tovisit.extend(obj for _, obj in inspect.getmembers(module, predicate))
+    def predicate(obj):
+        return hasattr(obj, "__module__") and obj.__module__.startswith(module_name)
+
+    tovisit.extend(obj for _, obj in inspect.getmembers(mod, predicate))
 
     while tovisit:
         obj = tovisit.pop()
