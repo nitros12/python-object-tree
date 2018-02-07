@@ -70,13 +70,15 @@ class PythonMethod:
     def __init__(self, fun: object):
         self.name = fun.__name__
         types = typing.get_type_hints(fun, namespace)
-        returns = types.get("returns")
+        returns = types.get("return")
         signature = inspect.signature(fun)
 
         args = list(signature.parameters.items())
-        resolved_args = (types.get(t) for _, t in args)
+        resolved_args = [types.get(t.name) for _, t in args]
 
         self.signature = inspect.Signature((t.replace(annotation=r)
+                                            if r is not None
+                                            else t
                                             for (n, t), r in zip(args, resolved_args)), return_annotation=returns)
 
     def __str__(self):
