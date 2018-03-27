@@ -1,3 +1,4 @@
+import sys
 import ast
 import inspect
 import typing
@@ -31,22 +32,24 @@ class PythonClass:
         self.attrs = self.build_body(self.obj.__init__)
         self.methods = methods
 
-    @property
-    def info(self):
-        attrs = escape_xml(r"\l".join(map(str, self.attrs)) + r"\l")
-        methods = r"\l".join(map(str, self.methods)) + r"\l"
-        return "{" + f"{self.name} | {attrs} | {methods}" + "}"
-
     def build_body(self, obj) -> List['PythonAttr']:
         try:
             lines, _ = inspect.getsourcelines(obj)
+            indent = len(lines[0]) - len(lines[0].lstrip())
+            lines = [line[indent:] for line in lines]
+            fn_body = ast.parse("".join(lines)).body[0].body  # the function body we just parsed
+            return list(chain.from_iterable(PythonAttr.from_ast(i, self.obj, obj)
+                                            for i in fn_body if PythonAttr.valid_ast(i)))
         except TypeError:
             return ()
-        indent = len(lines[0]) - len(lines[0].lstrip())
-        lines = [line[indent:] for line in lines]
-        fn_body = ast.parse("".join(lines)).body[0].body  # the function body we just parsed
-        return list(chain.from_iterable(PythonAttr.from_ast(i, self.obj, obj)
-                                        for i in fn_body if PythonAttr.valid_ast(i)))
+        except OSError:
+            pass  # maybe not good
+
+        if hasattr(obj, "__annotations__"):
+            types = typing.get_type_hints(obj, namespace)
+            return [PythonAttr(k, v) for k, v in types.items()]
+        return ()
+
 
     @classmethod
     def from_object(cls, obj: type):
@@ -82,11 +85,7 @@ class PythonMethod:
                                             for (n, t), r in zip(args, resolved_args)), return_annotation=returns)
 
     def __str__(self):
-        return escape_xml(f"fn {self.name}{self.signature}")
-
-    @property
-    def info(self):
-        return str(self)
+        return f"fn {self.name}{self.signature}"
 
 
 class PythonAttr:
