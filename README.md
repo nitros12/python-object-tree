@@ -1,5 +1,5 @@
-# Python-object-tree
-A bad tool that generates UML diagrams for python.
+# Pyumlgen
+A bad tool that generates plantuml UML for python source.
 
 # Usage
 
@@ -49,6 +49,51 @@ class D(B, C):
         return self.c
 ```
 
-renders into
+emits the following:
 
-![This](example.png)
+```plantuml
+@startuml
+class D {
+{method} fn __init__(self, nah:Tuple[Dict[str, int], str]) -> None
+{method} fn amazing(self) -> str
+{method} fn wot(self, a:int) -> int
+{method} fn wow(self, b:str) -> str
+{field} test:Dict[int, Tuple[Dict[str, int], str]]
+}
+D <|-- B
+D <|-- C
+class C {
+{method} fn __init__(self, a:int) -> None
+{method} fn wow(self, b:str) -> str
+{field} x:int
+{field} c:str
+{field} a:Callable[[], Tuple[int, str]]
+{field} t:Tuple[int, str]
+{field} ta:int
+{field} tb:str
+{field} n:int
+}
+C <|-- A
+class A {
+{method} fn __init__(self, a:int) -> None
+{field} x:int
+{field} c:str
+{field} a:Callable[[], Tuple[int, str]]
+{field} t:Tuple[int, str]
+{field} ta:int
+{field} tb:str
+{field} n:int
+}
+A <|-- object
+class object {
+
+
+}
+class B {
+{method} fn __init__(self, nah:Tuple[Dict[str, int], str]) -> None
+{method} fn wot(self, a:int) -> int
+{field} test:Dict[int, Tuple[Dict[str, int], str]]
+}
+B <|-- A
+@enduml
+```

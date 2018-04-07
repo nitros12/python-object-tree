@@ -1,0 +1,3 @@
+[submodule "pyumlgen/plantuml_dsl"]
+	path = pyumlgen/plantuml_dsl
+	url = https://gitlab.com/nitros12/pythonplantuml.git
