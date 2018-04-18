@@ -85,7 +85,11 @@ class PythonMethod:
                                             for (n, t), r in zip(args, resolved_args)), return_annotation=returns)
 
     def __str__(self):
-        return f"fn {self.name}{self.signature}"
+        if show_type_info:
+            return f"fn {self.name}{self.signature}"
+
+        args = ", ".join(self.signature.parameters)
+        return f"fn {self.name}({args})"
 
 
 class PythonAttr:
@@ -95,7 +99,9 @@ class PythonAttr:
         self.type_show = inspect.formatannotation(type)
 
     def __str__(self):
-        return f"{self.name}:{self.type_show}" if self.type else self.name
+        return (f"{self.name}:{self.type_show}"
+                if self.type and show_type_info
+                else self.name)
 
     __repr__ = __str__
 
@@ -229,10 +235,14 @@ def getname(obj: object):
     return obj.__class__.__name__
 
 
-def build_for_module(mod, names: dict=None):
+def build_for_module(mod, names: dict=None, has_type_info=False):
     if names:
         global namespace
         namespace.update(names)
+
+    #  nicer to just globalise than pass everywhere
+    global show_type_info
+    show_type_info = has_type_info
 
     name = mod.__name__
     visited = []

@@ -10,7 +10,7 @@ from plantuml_dsl import umlclass
 from pyumlgen import analysis
 
 
-def generate(*names: str) -> umlclass.ClassDiagram:
+def generate(*names: str, has_type_info=True) -> umlclass.ClassDiagram:
     """Generate uml graph for a module."""
     assert names
     graph = umlclass.ClassDiagram()
@@ -22,7 +22,7 @@ def generate(*names: str) -> umlclass.ClassDiagram:
 
     for mod in modules:
         global_namespace.update(vars(mod))
-        for i in analysis.build_for_module(mod, names=global_namespace):
+        for i in analysis.build_for_module(mod, names=global_namespace, has_type_info=has_type_info):
             if isinstance(i, analysis.PythonMethod):
                 o = umlclass.Object(str(i))
             elif isinstance(i, analysis.PythonClass):
@@ -41,9 +41,10 @@ def main():
     parser.add_argument("modules", nargs="+", help="module path to use.")
     parser.add_argument("-o", "--out", nargs="?", type=argparse.FileType("w"), default=sys.stdout,
                         help="output to dump uml to.")
+    parser.add_argument("--no-type", action="store_true", help="Disable type information on the output.")
 
     args = parser.parse_args()
-    graph = generate(*args.modules)
+    graph = generate(*args.modules, has_type_info=not args.no_type)
     args.out.write("@startuml\n")
     args.out.write(graph.render())
     args.out.write("\n@enduml")
